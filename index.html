@@ -395,7 +395,9 @@ footer a{color:var(--green);text-decoration:none}
           </div>
           <div id="key-paid" style="display:none">
             <div class="coming-soon-msg">
-              Paid access coming soon. For now, grab a free Geoapify key above.
+              Paid access coming soon. For now, grab a free Geoapify key above, or run a test with the shared Musette key.<br><br>
+              <button onclick="activateMusetteKey()" style="padding:10px 20px;border:none;border-radius:8px;background:var(--green);color:white;font-size:13px;font-family:inherit;cursor:pointer" id="musette-key-btn">Use Musette key for testing</button>
+              <span id="musette-key-status" style="display:none;margin-left:8px;font-size:13px;color:var(--green);font-weight:500">✓ Ready</span>
             </div>
           </div>
         </div>
@@ -498,6 +500,12 @@ const POI_COLORS = {
   shopping:'#d62828', bike_shop:'#588157', hospital:'#e63946', first_aid:'#e63946',
   atm:'#343a40'
 };
+
+// =========================================================================
+// PROXY CONFIG
+// =========================================================================
+const MUSETTE_PROXY = 'https://musette-proxy.musette.workers.dev';  // Cloudflare Worker proxy
+let useMusetteKey = false; // true when user picks "Try Musette key" tab
 
 // =========================================================================
 // STATE
@@ -652,6 +660,20 @@ function setKeyMode(mode, btn) {
   btn.classList.add('active');
   document.getElementById('key-own').style.display = mode==='own' ? '' : 'none';
   document.getElementById('key-paid').style.display = mode==='paid' ? '' : 'none';
+  if (mode === 'own') useMusetteKey = false;
+  checkReady();
+}
+
+function activateMusetteKey() {
+  if (!MUSETTE_PROXY) {
+    alert('Musette proxy is not configured yet. Use your own Geoapify key for now.');
+    return;
+  }
+  useMusetteKey = true;
+  document.getElementById('musette-key-btn').textContent = 'Musette key active';
+  document.getElementById('musette-key-btn').disabled = true;
+  document.getElementById('musette-key-btn').style.opacity = '0.6';
+  document.getElementById('musette-key-status').style.display = 'inline';
   checkReady();
 }
 
@@ -663,7 +685,8 @@ function saveKey() {
 
 function checkReady() {
   const hasFile = !!gpxData;
-  const hasKey = !!document.getElementById('api-key').value.trim();
+  const hasOwnKey = !!document.getElementById('api-key').value.trim();
+  const hasKey = hasOwnKey || useMusetteKey;
   document.getElementById('run-btn').disabled = !(hasFile && hasKey);
 }
 
@@ -731,8 +754,8 @@ function closestRouteKm(lat, lon) {
 // =========================================================================
 async function runEnrich() {
   const apiKey = document.getElementById('api-key').value.trim();
-  if (!apiKey) { alert('Enter your Geoapify API key'); return; }
-  localStorage.setItem('musette_api_key', apiKey);
+  if (!useMusetteKey && !apiKey) { alert('Enter your Geoapify API key'); return; }
+  if (apiKey) localStorage.setItem('musette_api_key', apiKey);
 
   const enabledPOIs = POI_DEFS.filter(d =>
     document.querySelector(`input[data-poi="${d.id}"]`)?.checked
@@ -769,7 +792,9 @@ async function runEnrich() {
       await tick();
 
       try {
-        const url = `https://api.geoapify.com/v2/places?categories=${def.geoapify}&filter=rect:${chunks[ci]}&limit=500&apiKey=${apiKey}`;
+        const url = useMusetteKey
+          ? `${MUSETTE_PROXY}/v2/places?categories=${def.geoapify}&filter=rect:${chunks[ci]}&limit=500`
+          : `https://api.geoapify.com/v2/places?categories=${def.geoapify}&filter=rect:${chunks[ci]}&limit=500&apiKey=${apiKey}`;
         const resp = await fetch(url);
         if (!resp.ok) {
           console.warn(`Geoapify ${resp.status} for ${def.id}`);
@@ -1223,5 +1248,6 @@ function downloadGPX() {
 // Listen for key input changes
 document.getElementById('api-key').addEventListener('input', checkReady);
 </script>
+<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "b13b22b14e194721a1db5fc3562f27bc"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
