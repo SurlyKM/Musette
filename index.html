@@ -827,9 +827,19 @@ async function runEnrich() {
   logProgress('✅', `Weather loaded for ${weatherData.length} points`);
 
   showProgress(100, '✅ Done!', totalFound);
-  document.getElementById('pc-title').textContent = 'Enrichment complete';
+  document.getElementById('pc-title').textContent = '✅ Enrichment complete';
   document.getElementById('run-btn').textContent = 'Enrich route';
   document.getElementById('run-btn').disabled = false;
+
+  // Add completion actions to progress card
+  const card = document.getElementById('progress-card');
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;gap:8px;margin-top:12px';
+  actions.innerHTML = `
+    <button onclick="document.getElementById('results').scrollIntoView({behavior:'smooth'})" style="flex:1;padding:12px;border:none;border-radius:8px;background:var(--green);color:white;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">View map and results ↓</button>
+    <button onclick="downloadGPX()" style="flex:1;padding:12px;border:none;border-radius:8px;background:var(--amber);color:white;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">Download GPX</button>
+  `;
+  card.appendChild(actions);
   await tick();
 
   showResults();
