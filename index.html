@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Musette — Enrich your ride</title>
+<title>Musette / Enrich your ride</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎒</text></svg>">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -352,7 +352,7 @@ footer a{color:var(--green);text-decoration:none}
 <header>
   <div class="container">
     <div class="logo"><span>🎒</span> Musette</div>
-    <a href="https://github.com/SurlyKM/musette" class="header-link" target="_blank">GitHub</a>
+    <a href="https://github.com/SurlyKM/Musette" class="header-link" target="_blank">GitHub</a>
   </div>
 </header>
 
@@ -390,7 +390,7 @@ footer a{color:var(--green);text-decoration:none}
               <button class="key-save" onclick="saveKey()">Save</button>
             </div>
             <p style="font-size:11px;color:var(--text-light);margin-top:6px">
-              Free at <a href="https://myprojects.geoapify.com" target="_blank" style="color:var(--green)">geoapify.com</a> — 3,000 requests/day
+              Free at <a href="https://myprojects.geoapify.com" target="_blank" style="color:var(--green)">geoapify.com</a>. 3,000 requests/day free
             </p>
           </div>
           <div id="key-paid" style="display:none">
@@ -422,10 +422,9 @@ footer a{color:var(--green);text-decoration:none}
         <div class="format-row">
           <label>Export format</label>
           <select class="format-select" id="format-select">
-            <option value="rwgps">Ride with GPS</option>
-            <option value="garmin" disabled>Garmin (coming soon)</option>
-            <option value="wahoo" disabled>Wahoo (coming soon)</option>
-            <option value="komoot" disabled>Komoot (coming soon)</option>
+            <option value="rwgps">Ride with GPS / Wahoo</option>
+            <option value="garmin">Garmin Connect</option>
+            <option value="standard">Standard GPX (Komoot, Sigma, others)</option>
           </select>
         </div>
       </div>
@@ -470,27 +469,27 @@ footer a{color:var(--green);text-decoration:none}
 </div>
 
 <footer>
-  <p>Musette — enrich your ride. <a href="https://github.com/SurlyKM/musette">Open source</a>. POI data from <a href="https://www.geoapify.com">Geoapify</a>. Weather from <a href="https://open-meteo.com">Open-Meteo</a>.</p>
+  <p>Musette. Enrich your ride. <a href="https://github.com/SurlyKM/Musette">Open source</a>. POI data from <a href="https://www.geoapify.com">Geoapify</a>. Weather from <a href="https://open-meteo.com">Open-Meteo</a>.</p>
 </footer>
 
 <script>
 // =========================================================================
-// POI DEFINITIONS — maps RWGPS types to Geoapify categories
+// POI DEFINITIONS - maps RWGPS types to Geoapify categories
 // =========================================================================
 const POI_DEFS = [
-  { id:'camping',    label:'Camping',     emoji:'⛺', rwgps:'camping',          geoapify:'camping.camp_site,camping.caravan_site', on:true },
-  { id:'lodging',    label:'Lodging',     emoji:'🏨', rwgps:'lodging',          geoapify:'accommodation.hotel,accommodation.motel,accommodation.hut', on:false },
-  { id:'water',      label:'Water',       emoji:'💧', rwgps:'water',            geoapify:'amenity.drinking_water,natural.water.spring', on:true },
-  { id:'restroom',   label:'Restroom',    emoji:'🚻', rwgps:'restroom',         geoapify:'amenity.toilet', on:true },
-  { id:'food',       label:'Food',        emoji:'🍽️', rwgps:'food',            geoapify:'catering.restaurant', on:true },
-  { id:'coffee',     label:'Coffee',      emoji:'☕', rwgps:'coffee',           geoapify:'catering.cafe', on:true },
-  { id:'bar',        label:'Bar / Pub',   emoji:'🍺', rwgps:'bar',             geoapify:'catering.pub,catering.bar', on:true },
-  { id:'store',      label:'Conv. Store', emoji:'🏪', rwgps:'convenience_store',geoapify:'commercial.convenience', on:true },
-  { id:'shopping',   label:'Supermarket', emoji:'🛒', rwgps:'shopping',         geoapify:'commercial.supermarket', on:true },
-  { id:'bike_shop',  label:'Bike Shop',   emoji:'🚲', rwgps:'bike_shop',        geoapify:'service.vehicle.bicycle', on:true },
-  { id:'hospital',   label:'Hospital',    emoji:'🏥', rwgps:'hospital',         geoapify:'healthcare.hospital', on:false },
-  { id:'first_aid',  label:'Pharmacy',    emoji:'💊', rwgps:'first_aid',        geoapify:'healthcare.pharmacy', on:false },
-  { id:'atm',        label:'ATM',         emoji:'💳', rwgps:'atm',             geoapify:'service.financial.atm', on:false },
+  { id:'camping',    label:'Camping',     emoji:'⛺', rwgps:'camping',          garmin:'CAMPSITE',   garminSym:'Campground',      geoapify:'camping.camp_site,camping.caravan_site', on:true },
+  { id:'lodging',    label:'Lodging',     emoji:'🏨', rwgps:'lodging',          garmin:'REST AREA',  garminSym:'Lodge',           geoapify:'accommodation.hotel,accommodation.motel,accommodation.hut', on:false },
+  { id:'water',      label:'Water',       emoji:'💧', rwgps:'water',            garmin:'WATER',      garminSym:'Drinking Water',  geoapify:'amenity.drinking_water,natural.water.spring', on:true },
+  { id:'restroom',   label:'Restroom',    emoji:'🚻', rwgps:'restroom',         garmin:'TOILET',     garminSym:'Restroom',        geoapify:'amenity.toilet', on:true },
+  { id:'food',       label:'Food',        emoji:'🍽️', rwgps:'food',            garmin:'FOOD',       garminSym:'Restaurant',      geoapify:'catering.restaurant', on:true },
+  { id:'coffee',     label:'Coffee',      emoji:'☕', rwgps:'coffee',           garmin:'FOOD',       garminSym:'Restaurant',      geoapify:'catering.cafe', on:true },
+  { id:'bar',        label:'Bar / Pub',   emoji:'🍺', rwgps:'bar',             garmin:'FOOD',       garminSym:'Bar',             geoapify:'catering.pub,catering.bar', on:true },
+  { id:'store',      label:'Conv. Store', emoji:'🏪', rwgps:'convenience_store',garmin:'STORE',      garminSym:'Convenience Store',geoapify:'commercial.convenience', on:true },
+  { id:'shopping',   label:'Supermarket', emoji:'🛒', rwgps:'shopping',         garmin:'STORE',      garminSym:'Shopping Center', geoapify:'commercial.supermarket', on:true },
+  { id:'bike_shop',  label:'Bike Shop',   emoji:'🚲', rwgps:'bike_shop',        garmin:'SERVICE',    garminSym:'Bike Trail',      geoapify:'service.vehicle.bicycle', on:true },
+  { id:'hospital',   label:'Hospital',    emoji:'🏥', rwgps:'hospital',         garmin:'FIRST AID',  garminSym:'Medical Facility',geoapify:'healthcare.hospital', on:false },
+  { id:'first_aid',  label:'Pharmacy',    emoji:'💊', rwgps:'first_aid',        garmin:'FIRST AID',  garminSym:'Pharmacy',        geoapify:'healthcare.pharmacy', on:false },
+  { id:'atm',        label:'ATM',         emoji:'💳', rwgps:'atm',             garmin:'GENERIC',    garminSym:'Bank',            geoapify:'service.financial.atm', on:false },
 ];
 
 const POI_COLORS = {
@@ -1140,6 +1139,7 @@ function renderWeather() {
 // GPX EXPORT
 // =========================================================================
 function downloadGPX() {
+  const format = document.getElementById('format-select').value;
   const parser = new DOMParser();
   const doc = parser.parseFromString(gpxData.rawXML, 'text/xml');
   const root = doc.documentElement;
@@ -1154,28 +1154,48 @@ function downloadGPX() {
     wpt.setAttribute('lat', p.lat.toFixed(6));
     wpt.setAttribute('lon', p.lon.toFixed(6));
 
-    const nameEl = doc.createElementNS(ns, 'name');
-    nameEl.textContent = p.name;
-    wpt.appendChild(nameEl);
-
-    const cmtEl = doc.createElementNS(ns, 'cmt');
-    cmtEl.textContent = p.def.rwgps;
-    wpt.appendChild(cmtEl);
-
-    const descEl = doc.createElementNS(ns, 'desc');
+    // Description parts (shared across all formats)
     const descParts = [p.def.label, `~${p.km.toFixed(0)} km`, `${p.offRoute.toFixed(1)} km off route`];
     if (p.suburb) descParts.push(p.suburb);
     if (p.opening) descParts.push(p.opening);
     if (p.phone) descParts.push(p.phone);
-    descEl.textContent = descParts.join(' | ');
-    wpt.appendChild(descEl);
+    const descText = descParts.join(' | ');
 
+    const nameEl = doc.createElementNS(ns, 'name');
+    const cmtEl = doc.createElementNS(ns, 'cmt');
+    const descEl = doc.createElementNS(ns, 'desc');
     const symEl = doc.createElementNS(ns, 'sym');
-    symEl.textContent = 'Dot';
-    wpt.appendChild(symEl);
-
     const typeEl = doc.createElementNS(ns, 'type');
-    typeEl.textContent = p.def.rwgps;
+
+    if (format === 'rwgps') {
+      // Ride with GPS / Wahoo format
+      nameEl.textContent = p.name;
+      cmtEl.textContent = p.def.rwgps;
+      descEl.textContent = descText;
+      symEl.textContent = 'Dot';
+      typeEl.textContent = p.def.rwgps;
+
+    } else if (format === 'garmin') {
+      // Garmin Connect format (UPPERCASE types, Garmin symbol names)
+      nameEl.textContent = p.name;
+      cmtEl.textContent = descText;
+      descEl.textContent = descText;
+      symEl.textContent = p.def.garminSym;
+      typeEl.textContent = p.def.garmin;
+
+    } else {
+      // Standard GPX (descriptive name with type prefix, generic symbols)
+      nameEl.textContent = `[${p.def.label}] ${p.name}`;
+      cmtEl.textContent = descText;
+      descEl.textContent = descText;
+      symEl.textContent = 'Flag, Blue';
+      typeEl.textContent = p.def.label;
+    }
+
+    wpt.appendChild(nameEl);
+    wpt.appendChild(cmtEl);
+    wpt.appendChild(descEl);
+    wpt.appendChild(symEl);
     wpt.appendChild(typeEl);
 
     if (insertBefore) {
@@ -1188,14 +1208,14 @@ function downloadGPX() {
 
   const serializer = new XMLSerializer();
   let xmlStr = serializer.serializeToString(doc);
-  // Ensure XML declaration
   if (!xmlStr.startsWith('<?xml')) xmlStr = '<?xml version="1.0" encoding="UTF-8"?>\n' + xmlStr;
 
+  const formatLabels = { rwgps: 'rwgps', garmin: 'garmin', standard: 'gpx' };
   const blob = new Blob([xmlStr], { type: 'application/gpx+xml' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'enriched_route.gpx';
+  a.download = `enriched_route_${formatLabels[format]}.gpx`;
   a.click();
   URL.revokeObjectURL(url);
 }
