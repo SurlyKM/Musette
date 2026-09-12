@@ -1,4 +1,4 @@
-# 🎒 Musette
+# Musette
 
 **Enrich your ride.** Drop a GPX file, pick what you need along the route, and download an enriched file with waypoints for cafes, water, camping, pubs, and more.
 
