@@ -832,14 +832,27 @@ async function runEnrich() {
   document.getElementById('run-btn').disabled = false;
 
   // Add completion actions to progress card
-  const card = document.getElementById('progress-card');
-  const actions = document.createElement('div');
-  actions.style.cssText = 'display:flex;gap:8px;margin-top:12px';
-  actions.innerHTML = `
-    <button onclick="setTimeout(()=>document.getElementById('results').scrollIntoView({behavior:'smooth',block:'start'}),200)" style="flex:1;padding:12px;border:none;border-radius:8px;background:var(--green);color:white;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">View map and results ↓</button>
-    <button onclick="downloadGPX()" style="flex:1;padding:12px;border:none;border-radius:8px;background:var(--amber);color:white;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">Download GPX</button>
-  `;
-  card.appendChild(actions);
+  let actions = document.getElementById('pc-actions');
+  if (!actions) {
+    actions = document.createElement('div');
+    actions.id = 'pc-actions';
+    actions.style.cssText = 'display:flex;gap:8px;margin-top:12px';
+    
+    const viewBtn = document.createElement('button');
+    viewBtn.textContent = 'View map and results ↓';
+    viewBtn.style.cssText = 'flex:1;padding:12px;border:none;border-radius:8px;background:var(--green);color:white;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer';
+    viewBtn.addEventListener('click', scrollToResults);
+    
+    const dlBtn = document.createElement('button');
+    dlBtn.textContent = 'Download GPX';
+    dlBtn.style.cssText = 'flex:1;padding:12px;border:none;border-radius:8px;background:var(--amber);color:white;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer';
+    dlBtn.addEventListener('click', downloadGPX);
+    
+    actions.appendChild(viewBtn);
+    actions.appendChild(dlBtn);
+    document.getElementById('progress-card').appendChild(actions);
+  }
+  actions.style.display = 'flex';
   await tick();
 
   showResults();
@@ -875,6 +888,15 @@ async function fetchWeather() {
 // =========================================================================
 // RESULTS DISPLAY
 // =========================================================================
+function scrollToResults() {
+  const el = document.getElementById('results');
+  if (el) {
+    el.style.display = '';
+    if (map) map.invalidateSize();
+    setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  }
+}
+
 function showResults() {
   document.getElementById('results').style.display = '';
 
