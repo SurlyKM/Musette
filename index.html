@@ -444,6 +444,10 @@ footer a{color:var(--green);text-decoration:none}
 
 <!-- RESULTS -->
 <div id="results" class="container">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0">
+    <button onclick="showSetup()" style="background:none;border:none;color:var(--green);font-size:14px;font-family:inherit;cursor:pointer;padding:4px 0">← Back to settings</button>
+    <button onclick="downloadGPX()" style="background:var(--amber);border:none;color:white;padding:8px 16px;border-radius:8px;font-size:13px;font-family:inherit;font-weight:600;cursor:pointer">Download GPX</button>
+  </div>
   <div class="stats-bar" id="stats-bar"></div>
 
   <div class="layer-bar" id="layer-bar"></div>
@@ -889,36 +893,55 @@ async function fetchWeather() {
 // RESULTS DISPLAY
 // =========================================================================
 function scrollToResults() {
-  const el = document.getElementById('results');
-  if (el) {
-    el.style.display = '';
-    if (map) map.invalidateSize();
-    setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  console.log('Musette: scrollToResults clicked');
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('results').style.display = '';
+  window.scrollTo(0, 0);
+  if (map) {
+    setTimeout(() => map.invalidateSize(), 200);
+  } else {
+    console.warn('Musette: map not initialised, trying showResults');
+    showResults();
   }
 }
 
+function showSetup() {
+  document.getElementById('setup').style.display = '';
+  document.getElementById('results').style.display = 'none';
+  window.scrollTo(0, 0);
+}
+
 function showResults() {
-  document.getElementById('results').style.display = '';
+  try {
+    // Show results and hide setup FIRST so Leaflet can measure the container
+    document.getElementById('results').style.display = '';
+    document.getElementById('setup').style.display = 'none';
+    window.scrollTo(0, 0);
 
-  // Stats bar
-  document.getElementById('stats-bar').innerHTML = `
-    <div class="stat-item"><span class="stat-val">${gpxData.totalKm.toFixed(0)}</span><span class="stat-label">km</span></div>
-    <div class="stat-item"><span class="stat-val">${Math.round(gpxData.climb).toLocaleString()}</span><span class="stat-label">m climbing</span></div>
-    <div class="stat-item"><span class="stat-val">${gpxData.eleMin.toFixed(0)}</span><span class="stat-label">m low</span></div>
-    <div class="stat-item"><span class="stat-val">${gpxData.eleMax.toFixed(0)}</span><span class="stat-label">m high</span></div>
-    <div class="stat-item"><span class="stat-val">${poiResults.length}</span><span class="stat-label">POIs</span></div>
-  `;
+    // Stats bar
+    document.getElementById('stats-bar').innerHTML = `
+      <div class="stat-item"><span class="stat-val">${gpxData.totalKm.toFixed(0)}</span><span class="stat-label">km</span></div>
+      <div class="stat-item"><span class="stat-val">${Math.round(gpxData.climb).toLocaleString()}</span><span class="stat-label">m climbing</span></div>
+      <div class="stat-item"><span class="stat-val">${gpxData.eleMin.toFixed(0)}</span><span class="stat-label">m low</span></div>
+      <div class="stat-item"><span class="stat-val">${gpxData.eleMax.toFixed(0)}</span><span class="stat-label">m high</span></div>
+      <div class="stat-item"><span class="stat-val">${poiResults.length}</span><span class="stat-label">POIs</span></div>
+    `;
 
-  initMap();
-  drawElevation();
-  renderWeather();
+    console.log('Musette: initialising map...');
+    initMap();
+    console.log('Musette: drawing elevation...');
+    drawElevation();
+    console.log('Musette: rendering weather...');
+    renderWeather();
+    console.log('Musette: results ready');
 
-  // Scroll after map has had time to render tiles
-  setTimeout(() => {
-    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    // Leaflet needs a nudge after becoming visible
-    if (map) map.invalidateSize();
-  }, 400);
+    setTimeout(() => { if (map) map.invalidateSize(); }, 300);
+  } catch (err) {
+    console.error('Musette showResults error:', err);
+    alert('Error displaying results: ' + err.message + '\n\nCheck browser console (F12) for details.');
+    // Show setup again so user isn't stuck
+    document.getElementById('setup').style.display = '';
+  }
 }
 
 function initMap() {
