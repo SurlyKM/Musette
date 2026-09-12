@@ -46,7 +46,7 @@ Hosted on GitHub Pages.
 
 ## Output format
 
-Currently exports GPX with waypoints formatted for **Ride with GPS** (using their POI type values). Garmin, Wahoo, and Komoot formats are planned.
+Currently exports GPX with waypoints formatted for **RidewithGPS** (using their POI type values) and Garmin, Wahoo, and Komoot formats.
 
 ## Local development
 
