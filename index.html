@@ -895,7 +895,7 @@ async function fetchWeather() {
 function scrollToResults() {
   console.log('Musette: scrollToResults clicked');
   document.getElementById('setup').style.display = 'none';
-  document.getElementById('results').style.display = '';
+  document.getElementById('results').style.display = 'block';
   window.scrollTo(0, 0);
   if (map) {
     setTimeout(() => map.invalidateSize(), 200);
@@ -906,7 +906,7 @@ function scrollToResults() {
 }
 
 function showSetup() {
-  document.getElementById('setup').style.display = '';
+  document.getElementById('setup').style.display = 'block';
   document.getElementById('results').style.display = 'none';
   window.scrollTo(0, 0);
 }
@@ -914,7 +914,7 @@ function showSetup() {
 function showResults() {
   try {
     // Show results and hide setup FIRST so Leaflet can measure the container
-    document.getElementById('results').style.display = '';
+    document.getElementById('results').style.display = 'block';
     document.getElementById('setup').style.display = 'none';
     window.scrollTo(0, 0);
 
@@ -940,7 +940,7 @@ function showResults() {
     console.error('Musette showResults error:', err);
     alert('Error displaying results: ' + err.message + '\n\nCheck browser console (F12) for details.');
     // Show setup again so user isn't stuck
-    document.getElementById('setup').style.display = '';
+    document.getElementById('setup').style.display = 'block';
   }
 }
 
