@@ -836,7 +836,7 @@ async function runEnrich() {
   const actions = document.createElement('div');
   actions.style.cssText = 'display:flex;gap:8px;margin-top:12px';
   actions.innerHTML = `
-    <button onclick="document.getElementById('results').scrollIntoView({behavior:'smooth'})" style="flex:1;padding:12px;border:none;border-radius:8px;background:var(--green);color:white;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">View map and results ↓</button>
+    <button onclick="setTimeout(()=>document.getElementById('results').scrollIntoView({behavior:'smooth',block:'start'}),200)" style="flex:1;padding:12px;border:none;border-radius:8px;background:var(--green);color:white;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">View map and results ↓</button>
     <button onclick="downloadGPX()" style="flex:1;padding:12px;border:none;border-radius:8px;background:var(--amber);color:white;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">Download GPX</button>
   `;
   card.appendChild(actions);
@@ -891,8 +891,12 @@ function showResults() {
   drawElevation();
   renderWeather();
 
-  // Scroll to results
-  document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
+  // Scroll after map has had time to render tiles
+  setTimeout(() => {
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Leaflet needs a nudge after becoming visible
+    if (map) map.invalidateSize();
+  }, 400);
 }
 
 function initMap() {
