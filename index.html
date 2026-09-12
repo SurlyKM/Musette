@@ -177,7 +177,7 @@ input[type=file]{display:none}
 
 /* Progress */
 .progress-bar{
-  height:4px;background:var(--border);border-radius:2px;
+  height:6px;background:var(--border);border-radius:3px;
   margin-top:12px;overflow:hidden;display:none;
 }
 .progress-fill{
@@ -185,6 +185,31 @@ input[type=file]{display:none}
   transition:width 0.3s;width:0%;
 }
 .progress-text{font-size:13px;color:var(--text-mid);margin-top:6px;display:none}
+
+.progress-card{
+  display:none;
+  background:var(--green-bg);
+  border:1px solid var(--green);
+  border-radius:var(--radius);
+  padding:16px;
+  margin-top:16px;
+}
+.progress-card.active{display:block}
+.progress-card .pc-title{font-weight:600;font-size:14px;color:var(--green);margin-bottom:8px}
+.progress-card .pc-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:10px}
+.progress-card .pc-fill{height:100%;background:var(--green);transition:width 0.3s;width:0%}
+.progress-card .pc-status{font-size:13px;color:var(--text-mid)}
+.progress-card .pc-found{font-size:13px;color:var(--green);font-weight:500;margin-top:4px}
+.progress-card .pc-log{
+  margin-top:10px;
+  max-height:120px;
+  overflow-y:auto;
+  font-size:12px;
+  color:var(--text-mid);
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
 
 /* Results */
 #results{display:none}
@@ -406,8 +431,13 @@ footer a{color:var(--green);text-decoration:none}
       </div>
 
       <button class="run-btn" id="run-btn" onclick="runEnrich()" disabled>Enrich route</button>
-      <div class="progress-bar" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
-      <div class="progress-text" id="progress-text"></div>
+      <div class="progress-card" id="progress-card">
+        <div class="pc-title" id="pc-title">Enriching route...</div>
+        <div class="pc-bar"><div class="pc-fill" id="pc-fill"></div></div>
+        <div class="pc-status" id="pc-status">Starting...</div>
+        <div class="pc-found" id="pc-found"></div>
+        <div class="pc-log" id="pc-log"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -634,15 +664,24 @@ function checkReady() {
   document.getElementById('run-btn').disabled = !(hasFile && hasKey);
 }
 
-function setProgress(pct, text) {
-  const bar = document.getElementById('progress-bar');
-  const fill = document.getElementById('progress-fill');
-  const txt = document.getElementById('progress-text');
-  bar.style.display = '';
-  txt.style.display = '';
-  fill.style.width = pct + '%';
-  txt.textContent = text;
+function showProgress(pct, status, found) {
+  const card = document.getElementById('progress-card');
+  card.classList.add('active');
+  document.getElementById('pc-fill').style.width = pct + '%';
+  if (status) document.getElementById('pc-status').textContent = status;
+  if (found !== undefined) document.getElementById('pc-found').textContent = found + ' POIs found so far';
 }
+
+function logProgress(emoji, text) {
+  const log = document.getElementById('pc-log');
+  const line = document.createElement('div');
+  line.textContent = emoji + ' ' + text;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+// Force browser to repaint between async steps
+function tick() { return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); }
 
 // =========================================================================
 // SIMPLIFY / CHUNK
@@ -699,21 +738,46 @@ async function runEnrich() {
   if (!enabledPOIs.length) { alert('Select at least one POI type'); return; }
 
   document.getElementById('run-btn').disabled = true;
+  document.getElementById('run-btn').textContent = 'Working...';
+  document.getElementById('pc-log').innerHTML = '';
+  document.getElementById('pc-title').textContent = 'Enriching route...';
   poiResults = [];
   const seenIds = new Set();
   const chunks = getChunks(gpxData.coords, 10);
-  const totalSteps = enabledPOIs.length * chunks.length;
-  let step = 0;
+  const totalTypes = enabledPOIs.length;
+  let typeIdx = 0;
+  let totalFound = 0;
+
+  showProgress(0, 'Starting...', 0);
+  await tick();
 
   for (const def of enabledPOIs) {
-    for (const rect of chunks) {
-      step++;
-      setProgress((step/totalSteps)*90, `Searching for ${def.label}... (${step}/${totalSteps})`);
+    typeIdx++;
+    let typeCount = 0;
+    const basePct = ((typeIdx - 1) / (totalTypes + 1)) * 100;
+    const typePctRange = 100 / (totalTypes + 1);
+
+    showProgress(basePct, `${def.emoji} Searching for ${def.label}... (${typeIdx}/${totalTypes})`, totalFound);
+    await tick();
+
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const chunkPct = basePct + (ci / chunks.length) * typePctRange;
+      showProgress(chunkPct, `${def.emoji} ${def.label}: scanning area ${ci+1}/${chunks.length}`, totalFound);
+      await tick();
 
       try {
-        const url = `https://api.geoapify.com/v2/places?categories=${def.geoapify}&filter=rect:${rect}&limit=500&apiKey=${apiKey}`;
+        const url = `https://api.geoapify.com/v2/places?categories=${def.geoapify}&filter=rect:${chunks[ci]}&limit=500&apiKey=${apiKey}`;
         const resp = await fetch(url);
-        if (!resp.ok) { console.warn(`Geoapify ${resp.status} for ${def.id}`); continue; }
+        if (!resp.ok) {
+          console.warn(`Geoapify ${resp.status} for ${def.id}`);
+          if (resp.status === 401 || resp.status === 403) {
+            logProgress('❌', 'API key rejected. Check your Geoapify key.');
+            document.getElementById('run-btn').disabled = false;
+            document.getElementById('run-btn').textContent = 'Enrich route';
+            return;
+          }
+          continue;
+        }
         const data = await resp.json();
 
         for (const feat of (data.features || [])) {
@@ -739,18 +803,34 @@ async function runEnrich() {
             suburb, street, opening, phone, website,
             km, offRoute,
           });
+          typeCount++;
+          totalFound++;
         }
       } catch (e) {
         console.warn(`Error fetching ${def.id}:`, e);
+        logProgress('⚠️', `${def.label} area ${ci+1}: network error`);
       }
       await new Promise(r => setTimeout(r, 200));
     }
+
+    logProgress(def.emoji, `${def.label}: ${typeCount} found`);
+    showProgress(basePct + typePctRange, `${def.emoji} ${def.label}: ${typeCount} found`, totalFound);
+    await tick();
   }
 
   poiResults.sort((a,b) => a.km - b.km);
-  setProgress(95, 'Loading weather...');
+
+  showProgress(92, '🌤️ Loading weather forecasts...', totalFound);
+  logProgress('🌤️', 'Fetching 7-day weather...');
+  await tick();
   await fetchWeather();
-  setProgress(100, `Done. ${poiResults.length} POIs found.`);
+  logProgress('✅', `Weather loaded for ${weatherData.length} points`);
+
+  showProgress(100, '✅ Done!', totalFound);
+  document.getElementById('pc-title').textContent = 'Enrichment complete';
+  document.getElementById('run-btn').textContent = 'Enrich route';
+  document.getElementById('run-btn').disabled = false;
+  await tick();
 
   showResults();
 }
