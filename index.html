@@ -546,6 +546,10 @@ const POI_COLORS = {
 // PROXY CONFIG
 // =========================================================================
 const MUSETTE_PROXY = 'https://musette-proxy.musette.workers.dev';  // Cloudflare Worker proxy
+
+// iOS decides which apps may receive a shared file from its UTI, which it
+// resolves from this MIME type and the .gpx extension. See share-test.html.
+const GPX_MIME = 'application/gpx+xml';
 let useMusetteKey = false; // true when user picks "Try Musette key" tab
 
 // =========================================================================
@@ -569,14 +573,23 @@ const IS_ANDROID = /Android/.test(UA);
 // are both unreliable or silently ignored.
 const IS_IN_APP_BROWSER = /FBAN|FBAV|FB_IAB|Instagram|Threads|Line\/|Twitter/i.test(UA);
 
+// Desktop Safari and desktop Chrome can both answer canShare({files}) with true,
+// then either reject the share or hand it to AirDrop/Mail - no route app in sight.
+// The share path only earns its button on a real phone or tablet.
+const IS_TOUCH_DEVICE = (() => {
+  try { return window.matchMedia('(pointer: coarse)').matches; } catch (e) { return false; }
+})() || IS_IOS || IS_ANDROID;
+
+const RWGPS_UPLOAD_URL = 'https://ridewithgps.com/upload';
 const RWGPS_APP_STORE = 'https://apps.apple.com/app/id893687399';
 const RWGPS_PLAY_STORE = 'https://play.google.com/store/apps/details?id=com.ridewithgps.mobile';
 
 // Can this browser put a real file into the system share sheet?
 function canShareFiles() {
   try {
+    if (!IS_TOUCH_DEVICE) return false;
     if (!navigator.canShare || !navigator.share) return false;
-    const probe = new File(['<gpx/>'], 'probe.gpx', { type: 'application/gpx+xml' });
+    const probe = new File(['<gpx/>'], 'probe.gpx', { type: GPX_MIME });
     return navigator.canShare({ files: [probe] });
   } catch (e) { return false; }
 }
@@ -1477,7 +1490,7 @@ function downloadGPX() {
     alert('Could not build the GPX file: ' + err.message);
     return;
   }
-  saveBlob(new Blob([out.xml], { type: 'application/gpx+xml' }), out.filename);
+  saveBlob(new Blob([out.xml], { type: GPX_MIME }), out.filename);
   if (IS_IN_APP_BROWSER) {
     showShareNote('If nothing downloaded, that is this in-app browser blocking it. Open Musette in Safari or Chrome and try again.');
   }
@@ -1518,7 +1531,7 @@ function updateShareUI() {
     btn.style.display = 'none';
     hint.innerHTML = IS_IN_APP_BROWSER
       ? 'Open Musette in Safari or Chrome to send routes straight to the Ride with GPS app.'
-      : `Download the file, then upload it at <a href="https://ridewithgps.com/routes/new" target="_blank" rel="noopener">ridewithgps.com</a>.`;
+      : `Download the file, then drop it on <a href="${RWGPS_UPLOAD_URL}" target="_blank" rel="noopener">ridewithgps.com/upload</a>.`;
   }
 }
 
@@ -1526,7 +1539,7 @@ function shareToRWGPS() {
   let file;
   try {
     const out = buildGPX();
-    file = new File([out.xml], out.filename, { type: 'application/gpx+xml' });
+    file = new File([out.xml], out.filename, { type: GPX_MIME });
   } catch (err) {
     console.error('Musette buildGPX error:', err);
     alert('Could not build the GPX file: ' + err.message);
