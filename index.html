@@ -319,7 +319,6 @@ input[type=file]{display:none}
 /* Mobile tweaks */
 @media(max-width:600px){
   .poi-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
-  .dl-row .dl-btn{font-size:14px;padding:13px 8px}
   .stats-bar{gap:12px}
   .stat-val{font-size:16px}
   #map{height:40vh;min-height:250px}
@@ -348,18 +347,8 @@ input[type=file]{display:none}
 .iab-banner b{color:var(--amber)}
 
 /* Download / share bar */
-.dl-row{display:flex;gap:8px}
-.dl-row .dl-btn{flex:1;font-size:15px}
-.dl-btn.dl-share{background:var(--green)}
-.dl-btn.dl-share:hover{background:var(--green-light)}
-.share-hint{
-  font-size:11px;color:var(--text-light);
-  text-align:center;margin-top:6px;line-height:1.5;
-}
-.share-hint a{color:var(--green);text-decoration:none}
-.share-hint a:hover{text-decoration:underline}
 .rwgps-steps{
-  display:none;margin-top:10px;padding:12px 14px;
+  display:none;margin-top:20px;padding:14px 16px;
   background:var(--card);border:1px solid var(--border);border-radius:8px;
 }
 .rwgps-steps.show{display:block}
@@ -519,14 +508,11 @@ footer a{color:var(--green);text-decoration:none}
   <h3 class="section-title" style="margin-top:20px">7-day weather along route</h3>
   <div class="weather-scroll" id="weather-scroll"></div>
 
+  <div class="rwgps-steps" id="rwgps-steps"></div>
+  <div class="share-note" id="share-note"></div>
+
   <div class="download-bar">
-    <div class="dl-row">
-      <button class="dl-btn" onclick="downloadGPX()">Download GPX</button>
-      <button class="dl-btn dl-share" id="share-btn" onclick="shareGPX()" style="display:none">Share file</button>
-    </div>
-    <div class="share-hint" id="share-hint"></div>
-    <div class="rwgps-steps" id="rwgps-steps"></div>
-    <div class="share-note" id="share-note"></div>
+    <button class="dl-btn" onclick="downloadGPX()">Download enriched GPX</button>
   </div>
 </div>
 
@@ -592,26 +578,9 @@ const IS_ANDROID = /Android/.test(UA);
 // are both unreliable or silently ignored.
 const IS_IN_APP_BROWSER = /FBAN|FBAV|FB_IAB|Instagram|Threads|Line\/|Twitter/i.test(UA);
 
-// Desktop Safari and desktop Chrome can both answer canShare({files}) with true,
-// then either reject the share or hand it to AirDrop/Mail - no route app in sight.
-// The share path only earns its button on a real phone or tablet.
-const IS_TOUCH_DEVICE = (() => {
-  try { return window.matchMedia('(pointer: coarse)').matches; } catch (e) { return false; }
-})() || IS_IOS || IS_ANDROID;
-
 const RWGPS_UPLOAD_URL = 'https://ridewithgps.com/upload';
 const RWGPS_APP_STORE = 'https://apps.apple.com/app/id893687399';
 const RWGPS_PLAY_STORE = 'https://play.google.com/store/apps/details?id=com.ridewithgps.mobile';
-
-// Can this browser put a real file into the system share sheet?
-function canShareFiles() {
-  try {
-    if (!IS_TOUCH_DEVICE) return false;
-    if (!navigator.canShare || !navigator.share) return false;
-    const probe = new File(['<gpx/>'], 'probe.gpx', { type: GPX_MIME });
-    return navigator.canShare({ files: [probe] });
-  } catch (e) { return false; }
-}
 
 // =========================================================================
 // STATE
@@ -1084,14 +1053,6 @@ async function runEnrichInner() {
     actions.id = 'pc-actions';
     actions.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:12px';
 
-    if (canShareFiles() && !IS_IN_APP_BROWSER) {
-      const shareBtn = document.createElement('button');
-      shareBtn.textContent = 'Share file';
-      shareBtn.style.cssText = 'flex:1 0 100%;padding:12px;border:none;border-radius:8px;background:var(--green);color:white;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer';
-      shareBtn.addEventListener('click', shareGPX);
-      actions.appendChild(shareBtn);
-    }
-
     const viewBtn = document.createElement('button');
     viewBtn.textContent = 'View map and results ↓';
     viewBtn.style.cssText = 'flex:1;padding:12px;border:none;border-radius:8px;background:var(--green);color:white;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer';
@@ -1535,78 +1496,53 @@ function showShareNote(msg) {
   note.classList.add('show');
 }
 
+// The browser share sheet is deliberately not used for the GPX. Chrome on
+// Android refuses to share a .gpx at all - its PERMITTED_EXTENSIONS allowlist
+// has no entry for it - and on iOS the sheet opens but lists only share
+// extensions, while every GPX app (Ride with GPS, Gaia, Maps.me, Earthmate)
+// registers as a document handler instead, so none of them appear. Downloading
+// and opening the file is the only route that works, on every platform.
 function updateShareUI() {
-  const btn = document.getElementById('share-btn');
-  const hint = document.getElementById('share-hint');
-  const note = document.getElementById('share-note');
   const steps = document.getElementById('rwgps-steps');
-  note.classList.remove('show');
-  steps.classList.remove('show');
+  document.getElementById('share-note').classList.remove('show');
 
   if (IS_IN_APP_BROWSER) {
-    btn.style.display = 'none';
-    hint.innerHTML = 'Open Musette in Safari or Chrome &mdash; downloads do not work in this in-app browser.';
-    return;
+    steps.innerHTML = `
+      <h4>Getting this into Ride with GPS</h4>
+      <ol><li>Open Musette in Safari or Chrome first &mdash; downloads do not
+      work in this in-app browser.</li></ol>`;
+  } else if (IS_IOS) {
+    steps.innerHTML = `
+      <h4>Getting this into Ride with GPS</h4>
+      <ol>
+        <li>Tap <b>Download enriched GPX</b> &mdash; it lands in Files, under Downloads.</li>
+        <li>Open the <b>Files</b> app and tap the <b>.gpx</b> file.</li>
+        <li>Tap the share icon, then choose <b>Ride with GPS</b>.</li>
+      </ol>
+      <div class="why">Ride with GPS only appears in the share sheet raised from
+      the Files app, not one a website can open &mdash; an iOS limitation, not a
+      Musette one. Don't have the app? ${rwgpsStoreLinks()}.</div>`;
+  } else if (IS_ANDROID) {
+    steps.innerHTML = `
+      <h4>Getting this into Ride with GPS</h4>
+      <ol>
+        <li>Tap <b>Download enriched GPX</b>.</li>
+        <li>Tap the download notification, or open the file from <b>Downloads</b>.</li>
+        <li>Choose <b>Ride with GPS</b> from the app list.</li>
+      </ol>
+      <div class="why">Don't have the app? ${rwgpsStoreLinks()}.</div>`;
+  } else {
+    steps.innerHTML = `
+      <h4>Getting this into Ride with GPS</h4>
+      <ol>
+        <li>Tap <b>Download enriched GPX</b>.</li>
+        <li>Drop the file on <a href="${RWGPS_UPLOAD_URL}" target="_blank" rel="noopener">ridewithgps.com/upload</a>.</li>
+      </ol>`;
   }
-
-  if (!canShareFiles()) {
-    // Desktop: the upload page is genuinely one drag away, so send them there.
-    btn.style.display = 'none';
-    hint.innerHTML = `Download the file, then drop it on <a href="${RWGPS_UPLOAD_URL}" target="_blank" rel="noopener">ridewithgps.com/upload</a>.`;
-    return;
-  }
-
-  // Mobile. The share sheet is offered for what it is actually good for -
-  // AirDropping to a laptop, messaging it, saving to Files - and NOT billed as
-  // a route to Ride with GPS, because on iOS the app does not appear in it.
-  btn.style.display = '';
-  hint.innerHTML = 'Share sends the file to AirDrop, Messages, Mail or Files.';
-  steps.innerHTML = IS_IOS ? `
-    <h4>Getting this into Ride with GPS</h4>
-    <ol>
-      <li>Tap <b>Download GPX</b> &mdash; it lands in Files, under Downloads.</li>
-      <li>Open the <b>Files</b> app and tap the <b>.gpx</b> file.</li>
-      <li>Tap the share icon, then choose <b>Ride with GPS</b>.</li>
-    </ol>
-    <div class="why">Why the extra hop: Ride with GPS only appears in the share
-    sheet raised from the Files app, not the one a website is allowed to open.
-    Don't have the app? ${rwgpsStoreLinks()}.</div>` : `
-    <h4>Getting this into Ride with GPS</h4>
-    <ol>
-      <li>Tap <b>Share file</b> and look for <b>Ride with GPS</b> in the list.</li>
-      <li>If it is not there, tap <b>Download GPX</b>, then open the file from
-      your Downloads and choose Ride with GPS.</li>
-    </ol>
-    <div class="why">Don't have the app? ${rwgpsStoreLinks()}.</div>`;
   steps.classList.add('show');
 }
 
-function shareGPX() {
-  let file;
-  try {
-    const out = buildGPX();
-    file = new File([out.xml], out.filename, { type: GPX_MIME });
-  } catch (err) {
-    console.error('Musette buildGPX error:', err);
-    alert('Could not build the GPX file: ' + err.message);
-    return;
-  }
 
-  if (!canShareFiles()) {
-    saveBlob(file, file.name);
-    showShareNote('This browser cannot open the share sheet, so the file was downloaded instead.');
-    return;
-  }
-
-  // Called without awaiting anything first, so the user gesture is still live.
-  navigator.share({ files: [file], title: 'Enriched route' })
-    .catch(err => {
-      if (err && err.name === 'AbortError') return;   // user dismissed the sheet
-      console.warn('Musette share failed:', err);
-      saveBlob(file, file.name);
-      showShareNote('Sharing was not available, so the file was downloaded instead.');
-    });
-}
 
 </script>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "b13b22b14e194721a1db5fc3562f27bc"}'></script><!-- End Cloudflare Web Analytics -->
