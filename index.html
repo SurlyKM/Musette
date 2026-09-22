@@ -245,7 +245,7 @@ input[type=file]{display:none}
   border-radius:var(--radius);padding:12px;margin-top:16px;
   position:relative;
 }
-.ele-container canvas{width:100%;height:100px}
+.ele-container canvas{width:100%;height:100px;touch-action:pan-y}
 .ele-info{
   position:absolute;top:8px;right:12px;
   font-size:12px;color:var(--text-mid);
@@ -319,6 +319,7 @@ input[type=file]{display:none}
 /* Mobile tweaks */
 @media(max-width:600px){
   .poi-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+  .dl-row .dl-btn{font-size:14px;padding:13px 8px}
   .stats-bar{gap:12px}
   .stat-val{font-size:16px}
   #map{height:40vh;min-height:250px}
@@ -337,6 +338,33 @@ input[type=file]{display:none}
 .collapsible-body{display:none;padding-top:10px}
 .collapsible-body.open{display:block}
 
+/* In-app browser banner */
+.iab-banner{
+  display:none;
+  background:#fff8e6;border-bottom:1px solid var(--amber);
+  padding:10px 16px;font-size:13px;color:#6b4c14;line-height:1.45;
+}
+.iab-banner.show{display:block}
+.iab-banner b{color:var(--amber)}
+
+/* Download / share bar */
+.dl-row{display:flex;gap:8px}
+.dl-row .dl-btn{flex:1;font-size:15px}
+.dl-btn.dl-share{background:var(--green)}
+.dl-btn.dl-share:hover{background:var(--green-light)}
+.share-hint{
+  font-size:11px;color:var(--text-light);
+  text-align:center;margin-top:6px;line-height:1.5;
+}
+.share-hint a{color:var(--green);text-decoration:none}
+.share-hint a:hover{text-decoration:underline}
+.share-note{
+  display:none;margin-top:8px;padding:10px 12px;
+  background:var(--green-bg);border-radius:8px;
+  font-size:12px;color:var(--text-mid);line-height:1.5;
+}
+.share-note.show{display:block}
+
 /* Footer */
 footer{
   text-align:center;padding:24px 16px;
@@ -348,6 +376,12 @@ footer a{color:var(--green);text-decoration:none}
 </style>
 </head>
 <body>
+
+<div class="iab-banner" id="iab-banner">
+  <b>Heads up:</b> you're in an in-app browser (Facebook, Instagram or similar).
+  File downloads and sharing don't work here.
+  Tap the <b>&#8943;</b> menu and choose <b>Open in browser</b> / <b>Open in Safari</b> first.
+</div>
 
 <header>
   <div class="container">
@@ -367,7 +401,7 @@ footer a{color:var(--green);text-decoration:none}
       <div class="upload-icon">📂</div>
       <div class="upload-text">Tap to choose a <b>.gpx file</b> or drag it here</div>
     </div>
-    <input type="file" id="file-input" accept=".gpx">
+    <input type="file" id="file-input" accept=".gpx,application/gpx+xml,application/xml,text/xml">
   </div>
 
   <div class="section container" id="settings-section" style="display:none">
@@ -456,17 +490,24 @@ footer a{color:var(--green);text-decoration:none}
 
   <div class="poi-summary" id="poi-summary"></div>
 
-  <h3 class="section-title" style="margin-top:20px">Elevation</h3>
-  <div class="ele-container">
-    <canvas id="ele-canvas"></canvas>
-    <div class="ele-info" id="ele-info"></div>
+  <div id="ele-section">
+    <h3 class="section-title" style="margin-top:20px">Elevation</h3>
+    <div class="ele-container">
+      <canvas id="ele-canvas"></canvas>
+      <div class="ele-info" id="ele-info"></div>
+    </div>
   </div>
 
   <h3 class="section-title" style="margin-top:20px">7-day weather along route</h3>
   <div class="weather-scroll" id="weather-scroll"></div>
 
   <div class="download-bar">
-    <button class="dl-btn" onclick="downloadGPX()">Download enriched GPX</button>
+    <div class="dl-row">
+      <button class="dl-btn dl-share" id="share-btn" onclick="shareToRWGPS()" style="display:none">Send to Ride with GPS</button>
+      <button class="dl-btn" onclick="downloadGPX()">Download GPX</button>
+    </div>
+    <div class="share-hint" id="share-hint"></div>
+    <div class="share-note" id="share-note"></div>
   </div>
 </div>
 
@@ -508,6 +549,39 @@ const MUSETTE_PROXY = 'https://musette-proxy.musette.workers.dev';  // Cloudflar
 let useMusetteKey = false; // true when user picks "Try Musette key" tab
 
 // =========================================================================
+// ENVIRONMENT / SAFETY HELPERS
+// =========================================================================
+// Storage can throw outright (blocked or partitioned cookies, private modes,
+// in-app browsers). Never let that take the whole script down.
+function storageGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function storageSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
+
+function esc(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+const UA = navigator.userAgent || '';
+const IS_IOS = /iPad|iPhone|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IS_ANDROID = /Android/.test(UA);
+// Facebook / Instagram / Threads webviews: <a download> and the share sheet
+// are both unreliable or silently ignored.
+const IS_IN_APP_BROWSER = /FBAN|FBAV|FB_IAB|Instagram|Threads|Line\/|Twitter/i.test(UA);
+
+const RWGPS_APP_STORE = 'https://apps.apple.com/app/id893687399';
+const RWGPS_PLAY_STORE = 'https://play.google.com/store/apps/details?id=com.ridewithgps.mobile';
+
+// Can this browser put a real file into the system share sheet?
+function canShareFiles() {
+  try {
+    if (!navigator.canShare || !navigator.share) return false;
+    const probe = new File(['<gpx/>'], 'probe.gpx', { type: 'application/gpx+xml' });
+    return navigator.canShare({ files: [probe] });
+  } catch (e) { return false; }
+}
+
+// =========================================================================
 // STATE
 // =========================================================================
 let gpxData = null;    // { coords, elevation, bounds, totalKm, climb, descent, rawXML }
@@ -516,6 +590,7 @@ let map = null;
 let routeLine = null;
 let poiLayers = {};
 let eleMarker = null;
+let lastRadiusKm = 5;  // radius used for the run that produced poiResults
 
 // =========================================================================
 // UI INIT
@@ -530,39 +605,47 @@ let eleMarker = null;
     grid.appendChild(lbl);
   });
 
-  // Load saved key
-  const savedKey = localStorage.getItem('musette_api_key');
-  if (savedKey) document.getElementById('api-key').value = savedKey;
-
-  // Drag and drop
+  // Drag and drop. Attached FIRST: anything below that throws must not be able
+  // to leave the app with a dead upload zone.
   const dz = document.getElementById('dropzone');
   ['dragenter','dragover'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.add('dragover'); }));
   ['dragleave','drop'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.remove('dragover'); }));
-  dz.addEventListener('drop', ev => { if (ev.dataTransfer.files.length) handleFile(ev.dataTransfer.files[0]); });
+  dz.addEventListener('drop', ev => { if (ev.dataTransfer && ev.dataTransfer.files.length) handleFile(ev.dataTransfer.files[0]); });
   document.getElementById('file-input').addEventListener('change', ev => { if (ev.target.files.length) handleFile(ev.target.files[0]); });
+  document.getElementById('api-key').addEventListener('input', checkReady);
+
+  // Load saved key
+  const savedKey = storageGet('musette_api_key');
+  if (savedKey) document.getElementById('api-key').value = savedKey;
+
+  if (IS_IN_APP_BROWSER) document.getElementById('iab-banner').classList.add('show');
 })();
 
 // =========================================================================
 // FILE HANDLING
 // =========================================================================
 function handleFile(file) {
-  if (!file.name.toLowerCase().endsWith('.gpx')) {
-    alert('Please upload a .gpx file');
-    return;
-  }
+  // Don't hard-reject on extension: iOS share sheets and some pickers hand over
+  // names that don't end in .gpx. Try to parse, and only complain if that fails.
   const reader = new FileReader();
+  reader.onerror = () => alert('Could not read that file. Try choosing it again.');
   reader.onload = e => {
-    const xml = e.target.result;
-    gpxData = parseGPX(xml);
-    if (!gpxData || gpxData.coords.length < 2) {
-      alert('Could not parse GPX file. Check that it contains a track or route.');
+    let parsed = null;
+    try {
+      parsed = parseGPX(e.target.result);
+    } catch (err) {
+      console.error('Musette parse error:', err);
+    }
+    if (!parsed || parsed.coords.length < 2) {
+      alert('Could not read a route from that file.\n\nMusette needs a .gpx file containing a track (trkpt) or route (rtept).');
       return;
     }
+    gpxData = parsed;
     // Update upload zone
     const dz = document.getElementById('dropzone');
     dz.classList.add('has-file');
     dz.innerHTML = `<div class="file-info">
-      <span class="file-name">📄 ${file.name}</span>
+      <span class="file-name">📄 ${esc(file.name)}</span>
       <span class="file-meta">${gpxData.coords.length.toLocaleString()} pts · ${gpxData.totalKm.toFixed(0)} km</span>
       <button class="file-remove" onclick="resetFile(event)">remove</button>
     </div>`;
@@ -590,51 +673,116 @@ function resetFile(ev) {
 function parseGPX(xmlStr) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlStr, 'text/xml');
+  if (!doc || !doc.documentElement) return null;
+  if (doc.getElementsByTagName('parsererror').length) return null;
   const ns = doc.documentElement.namespaceURI || '';
 
   function getEls(tag) {
     return ns ? doc.getElementsByTagNameNS(ns, tag) : doc.getElementsByTagName(tag);
+  }
+  function childEls(el, tag) {
+    return ns ? el.getElementsByTagNameNS(ns, tag) : el.getElementsByTagName(tag);
   }
 
   let pts = getEls('trkpt');
   if (!pts.length) pts = getEls('rtept');
   if (!pts.length) return null;
 
+  const n = pts.length;
   const coords = [];
-  const elevation = [];
+  const eles = new Float64Array(n);
+  let haveEle = false;
+  // Running min/max. Math.min(...arr) blows the call stack somewhere around
+  // 100k arguments, which a 1Hz-recorded long ride hits easily.
+  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+  let eleMin = Infinity, eleMax = -Infinity;
 
-  for (let i = 0; i < pts.length; i++) {
+  let m = 0;
+  for (let i = 0; i < n; i++) {
     const lat = parseFloat(pts[i].getAttribute('lat'));
     const lon = parseFloat(pts[i].getAttribute('lon'));
-    const eleEl = pts[i].getElementsByTagNameNS ? pts[i].getElementsByTagNameNS(ns,'ele')[0] : pts[i].getElementsByTagName('ele')[0];
-    const ele = eleEl ? parseFloat(eleEl.textContent) : 0;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+
+    const eleEl = childEls(pts[i], 'ele')[0];
+    const ele = eleEl ? parseFloat(eleEl.textContent) : NaN;
+    if (Number.isFinite(ele)) {
+      haveEle = true;
+      if (ele < eleMin) eleMin = ele;
+      if (ele > eleMax) eleMax = ele;
+      eles[m] = ele;
+    } else {
+      eles[m] = NaN;
+    }
+
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lon < minLon) minLon = lon;
+    if (lon > maxLon) maxLon = lon;
     coords.push([lat, lon]);
-    elevation.push({ lat, lon, ele });
+    m++;
   }
+  if (m < 2) return null;
 
-  // Cumulative distance + elevation stats
-  let totalKm = 0, climb = 0, descent = 0;
-  const eleProfile = [{ d:0, e:elevation[0].ele, lat:elevation[0].lat, lon:elevation[0].lon }];
-  const profileStep = Math.max(1, Math.floor(coords.length / 300));
-
-  for (let i = 1; i < coords.length; i++) {
-    totalKm += haversine(coords[i-1][0],coords[i-1][1],coords[i][0],coords[i][1]);
-    const diff = elevation[i].ele - elevation[i-1].ele;
-    if (diff > 0) climb += diff; else descent += Math.abs(diff);
-    if (i % profileStep === 0 || i === coords.length - 1) {
-      eleProfile.push({ d: totalKm, e: elevation[i].ele, lat: coords[i][0], lon: coords[i][1] });
+  // Carry the last known elevation across gaps so the profile stays continuous.
+  if (haveEle) {
+    let last = NaN;
+    for (let i = 0; i < m; i++) {
+      if (Number.isFinite(eles[i])) last = eles[i]; else eles[i] = last;
+    }
+    last = NaN;
+    for (let i = m - 1; i >= 0; i--) {
+      if (Number.isFinite(eles[i])) last = eles[i]; else eles[i] = last;
     }
   }
 
-  const lats = coords.map(c=>c[0]), lons = coords.map(c=>c[1]);
+  // Cumulative distance along the route
+  const cum = new Float64Array(m);
+  let totalKm = 0, climb = 0, descent = 0;
+  for (let i = 1; i < m; i++) {
+    totalKm += haversine(coords[i-1][0], coords[i-1][1], coords[i][0], coords[i][1]);
+    cum[i] = totalKm;
+    if (haveEle) {
+      const diff = eles[i] - eles[i-1];
+      if (Number.isFinite(diff)) { if (diff > 0) climb += diff; else descent -= diff; }
+    }
+  }
+
+  // ~300-point profile for the elevation chart
+  const profileStep = Math.max(1, Math.floor(m / 300));
+  const eleProfile = [];
+  for (let i = 0; i < m; i += profileStep) {
+    eleProfile.push({ d: cum[i], e: haveEle ? eles[i] : 0, lat: coords[i][0], lon: coords[i][1] });
+  }
+  const lastI = m - 1;
+  if (eleProfile[eleProfile.length-1].d !== cum[lastI]) {
+    eleProfile.push({ d: cum[lastI], e: haveEle ? eles[lastI] : 0, lat: coords[lastI][0], lon: coords[lastI][1] });
+  }
+
+  // Denser index used to measure how far a POI sits off the route. The 300-point
+  // profile is far too coarse for that: on a 600 km route its samples are 2 km
+  // apart, which is most of a 5 km radius.
+  const spacing = Math.max(0.2, totalKm / 4000);
+  const routeIndex = [{ d: 0, lat: coords[0][0], lon: coords[0][1] }];
+  let markKm = 0;
+  for (let i = 1; i < m; i++) {
+    if (cum[i] - markKm >= spacing) {
+      routeIndex.push({ d: cum[i], lat: coords[i][0], lon: coords[i][1] });
+      markKm = cum[i];
+    }
+  }
+  if (routeIndex[routeIndex.length-1].d !== cum[lastI]) {
+    routeIndex.push({ d: cum[lastI], lat: coords[lastI][0], lon: coords[lastI][1] });
+  }
 
   return {
     coords,
+    routeIndex,
     elevation: eleProfile,
-    bounds: [[Math.min(...lats),Math.min(...lons)],[Math.max(...lats),Math.max(...lons)]],
+    hasElevation: haveEle,
+    bounds: [[minLat, minLon], [maxLat, maxLon]],
     totalKm, climb, descent,
-    eleMin: Math.min(...elevation.map(e=>e.ele)),
-    eleMax: Math.max(...elevation.map(e=>e.ele)),
+    eleMin: haveEle ? eleMin : 0,
+    eleMax: haveEle ? eleMax : 0,
     rawXML: xmlStr,
   };
 }
@@ -679,7 +827,7 @@ function activateMusetteKey() {
 
 function saveKey() {
   const key = document.getElementById('api-key').value.trim();
-  if (key) localStorage.setItem('musette_api_key', key);
+  if (key) storageSet('musette_api_key', key);
   checkReady();
 }
 
@@ -720,9 +868,16 @@ function simplifyCoords(coords, n) {
   return out;
 }
 
-function getChunks(coords, numChunks) {
+// One search box per ~25 km of route. A fixed count meant short routes burnt
+// API calls on tiny boxes, and long routes got boxes so wide that Geoapify's
+// 500-result limit silently truncated them.
+function chunkCountFor(totalKm) {
+  return Math.max(4, Math.min(30, Math.ceil(totalKm / 25)));
+}
+
+function getChunks(coords, numChunks, radiusKm) {
   const chunkSize = Math.max(1, Math.floor(coords.length / numChunks));
-  const buf = (parseInt(document.getElementById('radius').value) * 1000) / 111000;
+  const buf = (radiusKm * 1000) / 111000;
   const chunks = [];
   for (let c = 0; c < numChunks; c++) {
     const start = c * chunkSize;
@@ -740,22 +895,43 @@ function getChunks(coords, numChunks) {
 }
 
 function closestRouteKm(lat, lon) {
-  const sampled = gpxData.elevation;
-  let bestD = Infinity, bestKm = 0;
-  for (const p of sampled) {
-    const d = haversine(lat, lon, p.lat, p.lon);
-    if (d < bestD) { bestD = d; bestKm = p.d; }
+  const pts = gpxData.routeIndex;
+  // Equirectangular approximation to find the nearest sample: at these distances
+  // it ranks identically to haversine and costs a fraction as much, which matters
+  // when it runs for every POI against a few thousand samples.
+  const cosLat = Math.cos(rad(lat));
+  let bestSq = Infinity, best = pts[0];
+  for (const p of pts) {
+    const dx = (p.lon - lon) * cosLat;
+    const dy = p.lat - lat;
+    const sq = dx*dx + dy*dy;
+    if (sq < bestSq) { bestSq = sq; best = p; }
   }
-  return { km: bestKm, offRoute: bestD };
+  return { km: best.d, offRoute: haversine(lat, lon, best.lat, best.lon) };
 }
 
 // =========================================================================
 // MAIN ENRICHMENT
 // =========================================================================
 async function runEnrich() {
+  try {
+    await runEnrichInner();
+  } catch (err) {
+    console.error('Musette enrich error:', err);
+    const msg = (err && err.message) ? err.message : String(err);
+    logProgress('❌', 'Something went wrong: ' + msg);
+    alert('Enrichment failed: ' + msg);
+  } finally {
+    // Always hand the button back, however we got here.
+    document.getElementById('run-btn').textContent = 'Enrich route';
+    checkReady();
+  }
+}
+
+async function runEnrichInner() {
   const apiKey = document.getElementById('api-key').value.trim();
   if (!useMusetteKey && !apiKey) { alert('Enter your Geoapify API key'); return; }
-  if (apiKey) localStorage.setItem('musette_api_key', apiKey);
+  if (apiKey) storageSet('musette_api_key', apiKey);
 
   const enabledPOIs = POI_DEFS.filter(d =>
     document.querySelector(`input[data-poi="${d.id}"]`)?.checked
@@ -769,10 +945,13 @@ async function runEnrich() {
   document.getElementById('pc-title').textContent = 'Enriching route...';
   poiResults = [];
   const seenIds = new Set();
-  const chunks = getChunks(gpxData.coords, 10);
+  const radiusKm = parseInt(document.getElementById('radius').value, 10) || 5;
+  lastRadiusKm = radiusKm;
+  const chunks = getChunks(gpxData.coords, chunkCountFor(gpxData.totalKm), radiusKm);
   const totalTypes = enabledPOIs.length;
   let typeIdx = 0;
   let totalFound = 0;
+  let totalSkipped = 0;
 
   showProgress(0, 'Starting...', 0);
   await tick();
@@ -815,7 +994,8 @@ async function runEnrich() {
           seenIds.add(def.id+pid);
 
           const lat = props.lat, lon = props.lon;
-          if (!lat || !lon) continue;
+          // Not a truthiness check: longitude 0 runs through the UK, France and Spain.
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
 
           const name = props.name || props.address_line1 || def.label;
           const suburb = props.suburb || props.city || '';
@@ -825,6 +1005,11 @@ async function runEnrich() {
           const phone = raw.phone || '';
           const website = props.website || '';
           const { km, offRoute } = closestRouteKm(lat, lon);
+
+          // The bbox query returns everything inside a rectangle that is much
+          // wider than the route. This is what makes the radius slider mean
+          // something; without it a "5 km" search shipped POIs 30 km off route.
+          if (offRoute > radiusKm) { totalSkipped++; continue; }
 
           poiResults.push({
             lat, lon, name, def,
@@ -847,6 +1032,7 @@ async function runEnrich() {
   }
 
   poiResults.sort((a,b) => a.km - b.km);
+  if (totalSkipped) logProgress('✂️', `${totalSkipped} results dropped for being over ${radiusKm} km off route`);
 
   showProgress(92, '🌤️ Loading weather forecasts...', totalFound);
   logProgress('🌤️', 'Fetching 7-day weather...');
@@ -864,8 +1050,16 @@ async function runEnrich() {
   if (!actions) {
     actions = document.createElement('div');
     actions.id = 'pc-actions';
-    actions.style.cssText = 'display:flex;gap:8px;margin-top:12px';
-    
+    actions.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:12px';
+
+    if (canShareFiles() && !IS_IN_APP_BROWSER) {
+      const shareBtn = document.createElement('button');
+      shareBtn.textContent = 'Send to Ride with GPS';
+      shareBtn.style.cssText = 'flex:1 0 100%;padding:12px;border:none;border-radius:8px;background:var(--green);color:white;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer';
+      shareBtn.addEventListener('click', shareToRWGPS);
+      actions.appendChild(shareBtn);
+    }
+
     const viewBtn = document.createElement('button');
     viewBtn.textContent = 'View map and results ↓';
     viewBtn.style.cssText = 'flex:1;padding:12px;border:none;border-radius:8px;background:var(--green);color:white;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer';
@@ -943,27 +1137,32 @@ function showResults() {
     window.scrollTo(0, 0);
 
     // Stats bar
-    document.getElementById('stats-bar').innerHTML = `
-      <div class="stat-item"><span class="stat-val">${gpxData.totalKm.toFixed(0)}</span><span class="stat-label">km</span></div>
+    const eleStats = gpxData.hasElevation ? `
       <div class="stat-item"><span class="stat-val">${Math.round(gpxData.climb).toLocaleString()}</span><span class="stat-label">m climbing</span></div>
       <div class="stat-item"><span class="stat-val">${gpxData.eleMin.toFixed(0)}</span><span class="stat-label">m low</span></div>
-      <div class="stat-item"><span class="stat-val">${gpxData.eleMax.toFixed(0)}</span><span class="stat-label">m high</span></div>
+      <div class="stat-item"><span class="stat-val">${gpxData.eleMax.toFixed(0)}</span><span class="stat-label">m high</span></div>` : '';
+    document.getElementById('stats-bar').innerHTML = `
+      <div class="stat-item"><span class="stat-val">${gpxData.totalKm.toFixed(0)}</span><span class="stat-label">km</span></div>${eleStats}
       <div class="stat-item"><span class="stat-val">${poiResults.length}</span><span class="stat-label">POIs</span></div>
     `;
+    // A file with no <ele> data gets a flat line and a bogus 0 m of climbing.
+    document.getElementById('ele-section').style.display = gpxData.hasElevation ? '' : 'none';
 
     console.log('Musette: initialising map...');
     initMap();
     console.log('Musette: drawing elevation...');
-    drawElevation();
+    if (gpxData.hasElevation) drawElevation();
     console.log('Musette: rendering weather...');
     renderWeather();
+    updateShareUI();
     console.log('Musette: results ready');
 
     setTimeout(() => { if (map) map.invalidateSize(); }, 300);
   } catch (err) {
     console.error('Musette showResults error:', err);
-    alert('Error displaying results: ' + err.message + '\n\nCheck browser console (F12) for details.');
+    alert('Error displaying results: ' + err.message + '\n\nCheck browser console for details.');
     // Show setup again so user isn't stuck
+    document.getElementById('results').style.display = 'none';
     document.getElementById('setup').style.display = 'block';
   }
 }
@@ -978,7 +1177,7 @@ function initMap() {
 
   // Route line
   const simplified = simplifyCoords(gpxData.coords, 500);
-  routeLine = L.polyline(simplified, { color:'var(--green)', weight:3, opacity:0.8 }).addTo(map);
+  routeLine = L.polyline(simplified, { color:'#2d6a4f', weight:3, opacity:0.8 }).addTo(map);
 
   // Start/end
   L.circleMarker(gpxData.coords[0], { radius:7, fillColor:'#2d6a4f', fillOpacity:1, color:'#fff', weight:2 }).addTo(map).bindPopup('<b>Start</b>');
@@ -1043,8 +1242,10 @@ function addPOILayers() {
       if (p.opening) extras.push(p.opening);
       if (p.phone) extras.push(p.phone);
 
+      // Names and opening hours come from OSM via Geoapify: escape before
+      // they go anywhere near innerHTML.
       L.marker([p.lat,p.lon], { icon: poiIcon(POI_COLORS[def.id]||'#666', def.emoji) })
-        .bindPopup(`<b>${p.name}</b><br><span style="color:#8a8a8a;font-size:11px">${def.label} · ${p.km.toFixed(0)} km · ${p.offRoute.toFixed(1)} km off route</span>${extras.length?'<br><span style="color:#8a8a8a;font-size:11px">'+extras.join(' · ')+'</span>':''}`)
+        .bindPopup(`<b>${esc(p.name)}</b><br><span style="color:#8a8a8a;font-size:11px">${def.label} · ${p.km.toFixed(0)} km · ${p.offRoute.toFixed(1)} km off route</span>${extras.length?'<br><span style="color:#8a8a8a;font-size:11px">'+extras.map(esc).join(' · ')+'</span>':''}`)
         .addTo(layer);
     });
 
@@ -1052,7 +1253,7 @@ function addPOILayers() {
   });
 
   // POI summary
-  document.getElementById('poi-summary').textContent = `${poiResults.length} points of interest found within ${document.getElementById('radius').value} km of route`;
+  document.getElementById('poi-summary').textContent = `${poiResults.length} points of interest within ${lastRadiusKm} km of the route`;
 }
 
 function addChip(bar, id, emoji, label, active) {
@@ -1085,7 +1286,7 @@ function drawElevation() {
   ctx.scale(dpr,dpr);
 
   const pts = gpxData.elevation;
-  const maxD = pts[pts.length-1].d;
+  const maxD = pts[pts.length-1].d || 1;
   const minE = gpxData.eleMin - 20;
   const maxE = gpxData.eleMax + 20;
 
@@ -1115,23 +1316,34 @@ function drawElevation() {
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Hover
-  canvas.onmousemove = canvas.ontouchmove = (ev) => {
-    ev.preventDefault();
+  // Hover / drag tracking. No preventDefault here: the canvas carries
+  // touch-action:pan-y, so the browser keeps vertical scrolling and hands us
+  // horizontal movement. The old version swallowed every touchmove, which made
+  // the page feel stuck whenever a swipe started on the chart.
+  const track = (ev) => {
     const cRect = canvas.getBoundingClientRect();
-    const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
-    const frac = (clientX - cRect.left) / cRect.width;
+    const clientX = ev.touches && ev.touches.length ? ev.touches[0].clientX : ev.clientX;
+    if (clientX == null) return;
+    const frac = Math.min(1, Math.max(0, (clientX - cRect.left) / cRect.width));
     const dist = frac * maxD;
     let nearest = pts[0];
     for (const p of pts) { if (Math.abs(p.d-dist)<Math.abs(nearest.d-dist)) nearest=p; }
     document.getElementById('ele-info').innerHTML = `<span>${nearest.e.toFixed(0)}m</span> at ${nearest.d.toFixed(0)} km`;
-    eleMarker.setLatLng([nearest.lat,nearest.lon]);
-    if (!map.hasLayer(eleMarker)) eleMarker.addTo(map);
+    if (map && eleMarker) {
+      eleMarker.setLatLng([nearest.lat,nearest.lon]);
+      if (!map.hasLayer(eleMarker)) eleMarker.addTo(map);
+    }
   };
-  canvas.onmouseleave = () => {
+  const clear = () => {
     document.getElementById('ele-info').innerHTML = '';
-    if (map && map.hasLayer(eleMarker)) map.removeLayer(eleMarker);
+    if (map && eleMarker && map.hasLayer(eleMarker)) map.removeLayer(eleMarker);
   };
+  canvas.onmousemove = track;
+  canvas.onmouseleave = clear;
+  canvas.ontouchstart = track;
+  canvas.ontouchmove = track;
+  canvas.ontouchend = clear;
+  canvas.ontouchcancel = clear;
 }
 
 // =========================================================================
@@ -1163,7 +1375,10 @@ function renderWeather() {
 // =========================================================================
 // GPX EXPORT
 // =========================================================================
-function downloadGPX() {
+// Builds the enriched GPX. Kept synchronous and separate from delivery so the
+// share path can create a File inside the click handler: iOS drops the user
+// gesture across an await and navigator.share() then fails silently.
+function buildGPX() {
   const format = document.getElementById('format-select').value;
   const parser = new DOMParser();
   const doc = parser.parseFromString(gpxData.rawXML, 'text/xml');
@@ -1236,17 +1451,104 @@ function downloadGPX() {
   if (!xmlStr.startsWith('<?xml')) xmlStr = '<?xml version="1.0" encoding="UTF-8"?>\n' + xmlStr;
 
   const formatLabels = { rwgps: 'rwgps', garmin: 'garmin', standard: 'gpx' };
-  const blob = new Blob([xmlStr], { type: 'application/gpx+xml' });
+  return { xml: xmlStr, filename: `enriched_route_${formatLabels[format]}.gpx` };
+}
+
+function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `enriched_route_${formatLabels[format]}.gpx`;
+  a.download = filename;
+  a.rel = 'noopener';
+  // Firefox ignores a click on an anchor that isn't in the document, and
+  // revoking the URL on the very next line is a race Safari regularly loses.
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
-// Listen for key input changes
-document.getElementById('api-key').addEventListener('input', checkReady);
+function downloadGPX() {
+  let out;
+  try {
+    out = buildGPX();
+  } catch (err) {
+    console.error('Musette buildGPX error:', err);
+    alert('Could not build the GPX file: ' + err.message);
+    return;
+  }
+  saveBlob(new Blob([out.xml], { type: 'application/gpx+xml' }), out.filename);
+  if (IS_IN_APP_BROWSER) {
+    showShareNote('If nothing downloaded, that is this in-app browser blocking it. Open Musette in Safari or Chrome and try again.');
+  }
+}
+
+// =========================================================================
+// SEND TO RIDE WITH GPS
+// =========================================================================
+// There is no way for a web page to hand a file straight to the Ride with GPS
+// app, and no way to detect whether it is installed. The system share sheet is
+// the real mechanism: RWGPS registers as a GPX handler, so it shows up there if
+// the user has it. Everything below is built around that, with store links for
+// when it doesn't appear.
+function rwgpsStoreLinks() {
+  if (IS_IOS) return `<a href="${RWGPS_APP_STORE}" target="_blank" rel="noopener">Get it on the App Store</a>`;
+  if (IS_ANDROID) return `<a href="${RWGPS_PLAY_STORE}" target="_blank" rel="noopener">Get it on Google Play</a>`;
+  return `<a href="${RWGPS_APP_STORE}" target="_blank" rel="noopener">App Store</a> &middot; <a href="${RWGPS_PLAY_STORE}" target="_blank" rel="noopener">Google Play</a>`;
+}
+
+function showShareNote(msg) {
+  const note = document.getElementById('share-note');
+  note.innerHTML = `${esc(msg)}<br><span style="display:inline-block;margin-top:6px">Don't have the app? ${rwgpsStoreLinks()}</span>`;
+  note.classList.add('show');
+}
+
+function updateShareUI() {
+  const btn = document.getElementById('share-btn');
+  const hint = document.getElementById('share-hint');
+  const note = document.getElementById('share-note');
+  note.classList.remove('show');
+
+  if (canShareFiles() && !IS_IN_APP_BROWSER) {
+    btn.style.display = '';
+    hint.innerHTML = `Opens your share sheet &mdash; choose <b>Ride with GPS</b>. Not listed? ${rwgpsStoreLinks()}`;
+  } else {
+    // Desktop browsers and in-app webviews can't share files. Don't offer a
+    // button that would quietly do something else.
+    btn.style.display = 'none';
+    hint.innerHTML = IS_IN_APP_BROWSER
+      ? 'Open Musette in Safari or Chrome to send routes straight to the Ride with GPS app.'
+      : `Download the file, then upload it at <a href="https://ridewithgps.com/routes/new" target="_blank" rel="noopener">ridewithgps.com</a>.`;
+  }
+}
+
+function shareToRWGPS() {
+  let file;
+  try {
+    const out = buildGPX();
+    file = new File([out.xml], out.filename, { type: 'application/gpx+xml' });
+  } catch (err) {
+    console.error('Musette buildGPX error:', err);
+    alert('Could not build the GPX file: ' + err.message);
+    return;
+  }
+
+  if (!canShareFiles()) {
+    saveBlob(file, file.name);
+    showShareNote('This browser cannot open the share sheet, so the file was downloaded instead. Open it from Files and share it to Ride with GPS.');
+    return;
+  }
+
+  // Called without awaiting anything first, so the user gesture is still live.
+  navigator.share({ files: [file], title: 'Enriched route', text: 'Route enriched with Musette' })
+    .catch(err => {
+      if (err && err.name === 'AbortError') return;   // user dismissed the sheet
+      console.warn('Musette share failed:', err);
+      saveBlob(file, file.name);
+      showShareNote('Sharing was not available, so the file was downloaded instead. Open it from Files and share it to Ride with GPS.');
+    });
+}
+
 </script>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "b13b22b14e194721a1db5fc3562f27bc"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
