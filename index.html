@@ -358,6 +358,24 @@ input[type=file]{display:none}
 }
 .share-hint a{color:var(--green);text-decoration:none}
 .share-hint a:hover{text-decoration:underline}
+.rwgps-steps{
+  display:none;margin-top:10px;padding:12px 14px;
+  background:var(--card);border:1px solid var(--border);border-radius:8px;
+}
+.rwgps-steps.show{display:block}
+.rwgps-steps h4{
+  font-family:'Inter',system-ui,sans-serif;font-size:12px;font-weight:600;
+  color:var(--text);margin-bottom:8px;
+}
+.rwgps-steps ol{margin:0 0 0 16px;padding:0}
+.rwgps-steps li{font-size:12px;color:var(--text-mid);margin-bottom:5px;line-height:1.5}
+.rwgps-steps li b{color:var(--green)}
+.rwgps-steps .why{
+  font-size:11px;color:var(--text-light);margin-top:8px;
+  padding-top:8px;border-top:1px solid var(--border);line-height:1.5;
+}
+.rwgps-steps a{color:var(--green);text-decoration:none}
+
 .share-note{
   display:none;margin-top:8px;padding:10px 12px;
   background:var(--green-bg);border-radius:8px;
@@ -503,10 +521,11 @@ footer a{color:var(--green);text-decoration:none}
 
   <div class="download-bar">
     <div class="dl-row">
-      <button class="dl-btn dl-share" id="share-btn" onclick="shareToRWGPS()" style="display:none">Send to Ride with GPS</button>
       <button class="dl-btn" onclick="downloadGPX()">Download GPX</button>
+      <button class="dl-btn dl-share" id="share-btn" onclick="shareGPX()" style="display:none">Share file</button>
     </div>
     <div class="share-hint" id="share-hint"></div>
+    <div class="rwgps-steps" id="rwgps-steps"></div>
     <div class="share-note" id="share-note"></div>
   </div>
 </div>
@@ -1067,9 +1086,9 @@ async function runEnrichInner() {
 
     if (canShareFiles() && !IS_IN_APP_BROWSER) {
       const shareBtn = document.createElement('button');
-      shareBtn.textContent = 'Send to Ride with GPS';
+      shareBtn.textContent = 'Share file';
       shareBtn.style.cssText = 'flex:1 0 100%;padding:12px;border:none;border-radius:8px;background:var(--green);color:white;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer';
-      shareBtn.addEventListener('click', shareToRWGPS);
+      shareBtn.addEventListener('click', shareGPX);
       actions.appendChild(shareBtn);
     }
 
@@ -1512,7 +1531,7 @@ function rwgpsStoreLinks() {
 
 function showShareNote(msg) {
   const note = document.getElementById('share-note');
-  note.innerHTML = `${esc(msg)}<br><span style="display:inline-block;margin-top:6px">Don't have the app? ${rwgpsStoreLinks()}</span>`;
+  note.textContent = msg;
   note.classList.add('show');
 }
 
@@ -1520,22 +1539,49 @@ function updateShareUI() {
   const btn = document.getElementById('share-btn');
   const hint = document.getElementById('share-hint');
   const note = document.getElementById('share-note');
+  const steps = document.getElementById('rwgps-steps');
   note.classList.remove('show');
+  steps.classList.remove('show');
 
-  if (canShareFiles() && !IS_IN_APP_BROWSER) {
-    btn.style.display = '';
-    hint.innerHTML = `Opens your share sheet &mdash; choose <b>Ride with GPS</b>. Not listed? ${rwgpsStoreLinks()}`;
-  } else {
-    // Desktop browsers and in-app webviews can't share files. Don't offer a
-    // button that would quietly do something else.
+  if (IS_IN_APP_BROWSER) {
     btn.style.display = 'none';
-    hint.innerHTML = IS_IN_APP_BROWSER
-      ? 'Open Musette in Safari or Chrome to send routes straight to the Ride with GPS app.'
-      : `Download the file, then drop it on <a href="${RWGPS_UPLOAD_URL}" target="_blank" rel="noopener">ridewithgps.com/upload</a>.`;
+    hint.innerHTML = 'Open Musette in Safari or Chrome &mdash; downloads do not work in this in-app browser.';
+    return;
   }
+
+  if (!canShareFiles()) {
+    // Desktop: the upload page is genuinely one drag away, so send them there.
+    btn.style.display = 'none';
+    hint.innerHTML = `Download the file, then drop it on <a href="${RWGPS_UPLOAD_URL}" target="_blank" rel="noopener">ridewithgps.com/upload</a>.`;
+    return;
+  }
+
+  // Mobile. The share sheet is offered for what it is actually good for -
+  // AirDropping to a laptop, messaging it, saving to Files - and NOT billed as
+  // a route to Ride with GPS, because on iOS the app does not appear in it.
+  btn.style.display = '';
+  hint.innerHTML = 'Share sends the file to AirDrop, Messages, Mail or Files.';
+  steps.innerHTML = IS_IOS ? `
+    <h4>Getting this into Ride with GPS</h4>
+    <ol>
+      <li>Tap <b>Download GPX</b> &mdash; it lands in Files, under Downloads.</li>
+      <li>Open the <b>Files</b> app and tap the <b>.gpx</b> file.</li>
+      <li>Tap the share icon, then choose <b>Ride with GPS</b>.</li>
+    </ol>
+    <div class="why">Why the extra hop: Ride with GPS only appears in the share
+    sheet raised from the Files app, not the one a website is allowed to open.
+    Don't have the app? ${rwgpsStoreLinks()}.</div>` : `
+    <h4>Getting this into Ride with GPS</h4>
+    <ol>
+      <li>Tap <b>Share file</b> and look for <b>Ride with GPS</b> in the list.</li>
+      <li>If it is not there, tap <b>Download GPX</b>, then open the file from
+      your Downloads and choose Ride with GPS.</li>
+    </ol>
+    <div class="why">Don't have the app? ${rwgpsStoreLinks()}.</div>`;
+  steps.classList.add('show');
 }
 
-function shareToRWGPS() {
+function shareGPX() {
   let file;
   try {
     const out = buildGPX();
@@ -1548,17 +1594,17 @@ function shareToRWGPS() {
 
   if (!canShareFiles()) {
     saveBlob(file, file.name);
-    showShareNote('This browser cannot open the share sheet, so the file was downloaded instead. Open it from Files and share it to Ride with GPS.');
+    showShareNote('This browser cannot open the share sheet, so the file was downloaded instead.');
     return;
   }
 
   // Called without awaiting anything first, so the user gesture is still live.
-  navigator.share({ files: [file], title: 'Enriched route', text: 'Route enriched with Musette' })
+  navigator.share({ files: [file], title: 'Enriched route' })
     .catch(err => {
       if (err && err.name === 'AbortError') return;   // user dismissed the sheet
       console.warn('Musette share failed:', err);
       saveBlob(file, file.name);
-      showShareNote('Sharing was not available, so the file was downloaded instead. Open it from Files and share it to Ride with GPS.');
+      showShareNote('Sharing was not available, so the file was downloaded instead.');
     });
 }
 
